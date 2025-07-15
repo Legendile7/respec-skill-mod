@@ -1,0 +1,32 @@
+{
+	"schemaVersion": 1,
+	"id": "respec-skill",
+	"version": "${version}",
+	"name": "Respec Skill",
+	"description": "A server-side mod to allow players to respec skills at an altar.",
+	"authors": [
+		"Legendile7"
+	],
+	"contact": {
+		"homepage": "",
+		"sources": ""
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/respec-skill/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.respecskill.RespecMod"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.16.14",
+		"minecraft": "~1.21.5",
+		"java": ">=21",
+		"fabric-api": "*",
+		"puffish_skills": ">=0.16.3"
+	},
+	"suggests": {
+		"another-mod": "*"
+	}
+}
