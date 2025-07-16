@@ -6,31 +6,27 @@
     "#R#"
   ],
   "key": {
-    "#": "minecraft:lapis_lazuli",
-    "R": "minecraft:redstone",
-    "E": "minecraft:ender_pearl",
-    "P": "minecraft:paper"
+    "#": {
+      "item": "minecraft:lapis_lazuli"
+    },
+    "R": {
+      "item": "minecraft:redstone"
+    },
+    "E": {
+      "item": "minecraft:ender_pearl"
+    },
+    "P": {
+      "item": "minecraft:paper"
+    }
   },
   "result": {
     "id": "minecraft:paper",
     "count": 1,
     "components": {
-      "minecraft:custom_name": {
-        "text": "Respec Scroll",
-        "color": "gold",
-        "italic": false
-      },
+      "minecraft:custom_name": "{\"text\":\"Respec Scroll\",\"color\":\"gold\",\"italic\":false}",
       "minecraft:lore": [
-        {
-          "text": "A mystic parchment, shimmering with potential.",
-          "color": "gray",
-          "italic": true
-        },
-        {
-          "text": "Use it at a skill altar to rewrite your path.",
-          "color": "dark_gray",
-          "italic": true
-        }
+        "{\"text\":\"A mystic parchment, shimmering with potential.\",\"color\":\"gray\",\"italic\":true}",
+        "{\"text\":\"Use it at a skill altar to rewrite your path.\",\"color\":\"dark_gray\",\"italic\":true}"
       ],
       "minecraft:custom_data": {
         "respec_scroll": true
