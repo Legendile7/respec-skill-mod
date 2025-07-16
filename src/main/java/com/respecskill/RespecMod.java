@@ -147,7 +147,7 @@ public class RespecMod implements ModInitializer {
 		NbtCompound nbt = customNbt.copyNbt();
 
 		// 3. Check for your tag, same as before.
-		return nbt.getBoolean("respec_scroll").orElse(false);
+		return nbt.getBoolean("respec_scroll");
 	}
 
 

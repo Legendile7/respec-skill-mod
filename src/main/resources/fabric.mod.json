@@ -20,8 +20,8 @@
 		]
 	},
 	"depends": {
-		"fabricloader": ">=0.16.14",
-		"minecraft": "~1.21.5",
+		"fabricloader": ">=0.16.0",
+		"minecraft": "~1.21.1",
 		"java": ">=21",
 		"fabric-api": "*",
 		"puffish_skills": ">=0.16.3"
