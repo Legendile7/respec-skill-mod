@@ -1,6 +1,7 @@
 package com.respecskill;
 
 import com.mojang.brigadier.Command;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
@@ -164,60 +165,15 @@ public class RespecMod implements ModInitializer {
 			Category category = categoryOpt.get();
 			int points = category.getPointsTotal(player);
 
-			// If the player has points, reset their skills (using config for minimum level)
-			if (points >= config.getMinLevelToRespec()) {
-				player.getStackInHand(hand).decrement(1);
+			// Check if prestige system is enabled for this skill category
+			Optional<RespecConfig.PrestigeMapping> prestigeOpt = config.getPrestigeMapping(skillCategory);
 
-				Optional<Experience> experienceOpt = category.getExperience();
-
-				if (experienceOpt.isPresent()) {
-					Experience experience = experienceOpt.get();
-					int currentXp = experience.getTotal(player);
-					LOGGER.info("Player has {} XP in {} category", currentXp, skillCategory);
-
-					// Erase category
-					category.erase(player);
-
-					// Calculate new XP based on the config factor
-					int newXP = (int)(currentXp * config.getXpReductionFactor());
-
-					// If there was XP and we should give some back
-					if (newXP > 0) {
-						// Construct and execute the command to add back reduced XP
-						// FIX: Add colon between namespace and category
-						String xpCommand = String.format("/puffish_skills experience add %s %s:%s %d",
-								player.getName().getString(),
-								config.getSkillTreeNamespace(),
-								skillCategory,
-								newXP);
-
-						LOGGER.info("Executing XP command: {}", xpCommand); // Add this for debugging
-
-						Objects.requireNonNull(player.getServer()).getCommandManager().executeWithPrefix(
-								player.getServer().getCommandSource().withSilent().withLevel(4),
-								xpCommand
-						);
-
-						LOGGER.info("Added back {} XP to player for {}:{} category", newXP,
-								config.getSkillTreeNamespace(), skillCategory);
-					}
-
-					int newLevel = experience.getLevel(player);
-
-					LightningEntity lightning = new LightningEntity(EntityType.LIGHTNING_BOLT, world);
-					lightning.setCosmetic(true);
-					lightning.setPosition(pos.toCenterPos().add(0, 0.5, 0));
-					world.spawnEntity(lightning);
-
-					world.playSound(null, pos, SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER, SoundCategory.BLOCKS, 1.0f, 1.0f);
-
-					player.sendMessage(Text.literal("Your " + skillCategory + " skills have been reset!").formatted(Formatting.GOLD), false);
-					player.sendMessage(Text.literal("You are now level " + newLevel).formatted(Formatting.AQUA), false);
-					player.sendMessage(Text.literal("A surge of power washes over you...").formatted(Formatting.GRAY), false);
-				}
+			if (prestigeOpt.isPresent() && prestigeOpt.get().isEnabled()) {
+				// Prestige system is enabled for this skill
+				executePrestigeRespec(player, world, hand, pos, skillCategory, prestigeOpt.get(), category, points);
 			} else {
-				player.sendMessage(Text.literal("You need to be level " + config.getMinLevelToRespec() +
-						" in this category to respec!").formatted(Formatting.RED), false);
+				// Regular respec
+				executeRegularRespec(player, world, hand, pos, skillCategory, category, points);
 			}
 		} else {
 			// Try to detect namespace again, maybe it changed
@@ -232,66 +188,191 @@ public class RespecMod implements ModInitializer {
 				Category category = categoryOpt.get();
 				int points = category.getPointsTotal(player);
 
-				// If the player has points, reset their skills (using config for minimum level)
-				if (points >= config.getMinLevelToRespec()) {
-					player.getStackInHand(hand).decrement(1);
+				// Check if prestige system is enabled for this skill category
+				Optional<RespecConfig.PrestigeMapping> prestigeOpt = config.getPrestigeMapping(skillCategory);
 
-					Optional<Experience> experienceOpt = category.getExperience();
-
-					if (experienceOpt.isPresent()) {
-						Experience experience = experienceOpt.get();
-						int currentXp = experience.getTotal(player);
-						LOGGER.info("Player has {} XP in {} category", currentXp, skillCategory);
-
-						// Erase category
-						category.erase(player);
-
-						// Calculate new XP based on the config factor
-						int newXP = (int)(currentXp * config.getXpReductionFactor());
-
-						// If there was XP and we should give some back
-						if (newXP > 0) {
-							// Construct and execute the command to add back reduced XP
-							// FIX: Add colon between namespace and category
-							String xpCommand = String.format("/puffish_skills experience add %s %s:%s %d",
-									player.getName().getString(),
-									config.getSkillTreeNamespace(),
-									skillCategory,
-									newXP);
-
-							LOGGER.info("Executing XP command: {}", xpCommand); // Add this for debugging
-
-							Objects.requireNonNull(player.getServer()).getCommandManager().executeWithPrefix(
-									player.getServer().getCommandSource().withSilent().withLevel(4),
-									xpCommand
-							);
-
-							LOGGER.info("Added back {} XP to player for {}:{} category", newXP,
-									config.getSkillTreeNamespace(), skillCategory);
-						}
-
-						int newLevel = experience.getLevel(player);
-
-						LightningEntity lightning = new LightningEntity(EntityType.LIGHTNING_BOLT, world);
-						lightning.setCosmetic(true);
-						lightning.setPosition(pos.toCenterPos().add(0, 0.5, 0));
-						world.spawnEntity(lightning);
-
-						world.playSound(null, pos, SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER, SoundCategory.BLOCKS, 1.0f, 1.0f);
-
-						player.sendMessage(Text.literal("Your " + skillCategory + " skills have been reset!").formatted(Formatting.GOLD), false);
-						player.sendMessage(Text.literal("You are now level " + newLevel).formatted(Formatting.AQUA), false);
-						player.sendMessage(Text.literal("A surge of power washes over you...").formatted(Formatting.GRAY), false);
-					}
+				if (prestigeOpt.isPresent() && prestigeOpt.get().isEnabled()) {
+					// Prestige system is enabled for this skill
+					executePrestigeRespec(player, world, hand, pos, skillCategory, prestigeOpt.get(), category, points);
 				} else {
-					player.sendMessage(Text.literal("You need to be level " + config.getMinLevelToRespec() +
-							" to reset in this category!").formatted(Formatting.RED), false);
+					// Regular respec
+					executeRegularRespec(player, world, hand, pos, skillCategory, category, points);
 				}
 			} else {
 				player.sendMessage(Text.literal("Skill category '" + skillCategory + "' not found in config. Please notify server administrators.").formatted(Formatting.RED), false);
 			}
 		}
 	}
+
+	private void executeRegularRespec(ServerPlayerEntity player, World world, Hand hand, BlockPos pos, String skillCategory, Category category, int points) {
+		// If the player has points, reset their skills (using config for minimum level)
+		if (points >= config.getMinLevelToRespec()) {
+			player.getStackInHand(hand).decrement(1);
+
+			Optional<Experience> experienceOpt = category.getExperience();
+
+			if (experienceOpt.isPresent()) {
+				Experience experience = experienceOpt.get();
+				int currentXp = experience.getTotal(player);
+				LOGGER.info("Player has {} XP in {} category", currentXp, skillCategory);
+
+				// Erase category
+				category.erase(player);
+
+				// Calculate new XP based on the config factor
+				int newXP = (int)(currentXp * config.getXpReductionFactor());
+
+				// If there was XP and we should give some back
+				if (newXP > 0) {
+					// Construct and execute the command to add back reduced XP
+					String xpCommand = String.format("/puffish_skills experience add %s %s:%s %d",
+							player.getName().getString(),
+							config.getSkillTreeNamespace(),
+							skillCategory,
+							newXP);
+
+					LOGGER.info("Executing XP command: {}", xpCommand);
+
+					Objects.requireNonNull(player.getServer()).getCommandManager().executeWithPrefix(
+							player.getServer().getCommandSource().withSilent().withLevel(4),
+							xpCommand
+					);
+
+					LOGGER.info("Added back {} XP to player for {}:{} category", newXP,
+							config.getSkillTreeNamespace(), skillCategory);
+				}
+
+				int newLevel = experience.getLevel(player);
+
+				// Effects
+				createRespecEffects(player, world, pos);
+
+				player.sendMessage(Text.literal("Your " + skillCategory + " skills have been reset!").formatted(Formatting.GOLD), false);
+				player.sendMessage(Text.literal("You are now level " + newLevel).formatted(Formatting.AQUA), false);
+				player.sendMessage(Text.literal("A surge of power washes over you...").formatted(Formatting.GRAY), false);
+			}
+		} else {
+			player.sendMessage(Text.literal("You need to be level " + config.getMinLevelToRespec() +
+					" in this category to respec!").formatted(Formatting.RED), false);
+		}
+	}
+
+	private void executePrestigeRespec(ServerPlayerEntity player, World world, Hand hand, BlockPos pos, String skillCategory, RespecConfig.PrestigeMapping prestige, Category category, int points) {
+		// Check if player meets prestige requirements
+		if (points < prestige.getMinPrestigeLevel()) {
+			player.sendMessage(Text.literal("You need to be level " + prestige.getMinPrestigeLevel() +
+					" in " + skillCategory + " to prestige to " + prestige.getToSkill() + "!").formatted(Formatting.RED), false);
+			return;
+		}
+
+		player.getStackInHand(hand).decrement(1);
+
+		Optional<Experience> experienceOpt = category.getExperience();
+
+		if (experienceOpt.isPresent()) {
+			Experience experience = experienceOpt.get();
+			int currentXp = experience.getTotal(player);
+			LOGGER.info("Player has {} XP in {} category, prestiging to {}", currentXp, skillCategory, prestige.getToSkill());
+
+			// Erase the original category's data to prevent XP duplication.
+			category.erase(player);
+			LOGGER.info("Erased player data for original category: {}", skillCategory);
+
+			// Lock the current skill tree first
+			String lockCommand = String.format("/puffish_skills category lock %s %s:%s",
+					player.getName().getString(),
+					config.getSkillTreeNamespace(),
+					skillCategory);
+
+			LOGGER.info("Executing lock command: {}", lockCommand);
+
+			Objects.requireNonNull(player.getServer()).getCommandManager().executeWithPrefix(
+					player.getServer().getCommandSource().withSilent().withLevel(4),
+					lockCommand
+			);
+
+			// Unlock the new skill tree
+			String unlockCommand = String.format("/puffish_skills category unlock %s %s:%s",
+					player.getName().getString(),
+					config.getSkillTreeNamespace(),
+					prestige.getToSkill());
+
+			LOGGER.info("Executing unlock command: {}", unlockCommand);
+
+			Objects.requireNonNull(player.getServer()).getCommandManager().executeWithPrefix(
+					player.getServer().getCommandSource().withSilent().withLevel(4),
+					unlockCommand
+			);
+
+			// Calculate prestige XP based on the prestige multiplier
+			int prestigeXP = (int)(currentXp * prestige.getPrestigeXpMultiplier());
+
+			// Add XP to the NEW skill tree instead of the old one
+			if (prestigeXP > 0) {
+				String xpCommand = String.format("/puffish_skills experience add %s %s:%s %d",
+						player.getName().getString(),
+						config.getSkillTreeNamespace(),
+						prestige.getToSkill(),
+						prestigeXP);
+
+				LOGGER.info("Executing prestige XP command: {}", xpCommand);
+
+				Objects.requireNonNull(player.getServer()).getCommandManager().executeWithPrefix(
+						player.getServer().getCommandSource().withSilent().withLevel(4),
+						xpCommand
+				);
+
+				LOGGER.info("Added {} XP to player for {}:{} category (prestige)", prestigeXP,
+						config.getSkillTreeNamespace(), prestige.getToSkill());
+			}
+
+			// Get the new experience level for feedback
+			Identifier newCategoryId = Identifier.of(config.getSkillTreeNamespace(), prestige.getToSkill());
+			Optional<Category> newCategoryOpt = SkillsAPI.getCategory(newCategoryId);
+			int newLevel = 0;
+			if (newCategoryOpt.isPresent()) {
+				Optional<Experience> newExperienceOpt = newCategoryOpt.get().getExperience();
+				if (newExperienceOpt.isPresent()) {
+					newLevel = newExperienceOpt.get().getLevel(player);
+				}
+			}
+
+			// Enhanced prestige effects
+			createPrestigeEffects(player, world, pos);
+
+			player.sendMessage(Text.literal("PRESTIGE ASCENSION COMPLETE!").formatted(Formatting.LIGHT_PURPLE, Formatting.BOLD), false);
+			player.sendMessage(Text.literal("Your " + skillCategory + " mastery has evolved into " + prestige.getToSkill() + "!").formatted(Formatting.GOLD), false);
+			player.sendMessage(Text.literal("You are now level " + newLevel + " in " + prestige.getToSkill()).formatted(Formatting.AQUA), false);
+			player.sendMessage(Text.literal("The power of transcendence flows through you...").formatted(Formatting.DARK_PURPLE, Formatting.ITALIC), false);
+		}
+	}
+
+	private void createRespecEffects(ServerPlayerEntity player, World world, BlockPos pos) {
+		LightningEntity lightning = new LightningEntity(EntityType.LIGHTNING_BOLT, world);
+		lightning.setCosmetic(true);
+		lightning.setPosition(pos.toCenterPos().add(0, 0.5, 0));
+		world.spawnEntity(lightning);
+
+		world.playSound(null, pos, SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER, SoundCategory.BLOCKS, 1.0f, 1.0f);
+	}
+
+	private void createPrestigeEffects(ServerPlayerEntity player, World world, BlockPos pos) {
+		// Multiple lightning strikes for prestige
+		for (int i = 0; i < 3; i++) {
+			LightningEntity lightning = new LightningEntity(EntityType.LIGHTNING_BOLT, world);
+			lightning.setCosmetic(true);
+			lightning.setPosition(pos.toCenterPos().add(
+					(world.getRandom().nextDouble() - 0.5) * 2,
+					0.5 + i * 0.3,
+					(world.getRandom().nextDouble() - 0.5) * 2
+			));
+			world.spawnEntity(lightning);
+		}
+
+		world.playSound(null, pos, SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER, SoundCategory.BLOCKS, 1.5f, 0.8f);
+		world.playSound(null, pos, SoundEvents.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.BLOCKS, 0.7f, 1.2f);
+	}
+
 	private void registerCommands() {
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
 			dispatcher.register(
@@ -316,6 +397,169 @@ public class RespecMod implements ModInitializer {
 
 										return Command.SINGLE_SUCCESS;
 									})
+							)
+							.then(CommandManager.literal("prestige")
+									.then(CommandManager.literal("lock")
+											.then(CommandManager.argument("player", StringArgumentType.word())
+													.then(CommandManager.argument("skill", StringArgumentType.word())
+															.executes(context -> {
+																String playerName = StringArgumentType.getString(context, "player");
+																String skillCategory = StringArgumentType.getString(context, "skill");
+
+																// Execute the lock command
+																String lockCommand = String.format("/puffish_skills category lock %s %s:%s",
+																		playerName,
+																		config.getSkillTreeNamespace(),
+																		skillCategory);
+
+																LOGGER.info("Manual lock command: {}", lockCommand);
+
+																Objects.requireNonNull(context.getSource().getServer()).getCommandManager().executeWithPrefix(
+																		context.getSource().getServer().getCommandSource().withSilent().withLevel(4),
+																		lockCommand
+																);
+
+																context.getSource().sendFeedback(
+																		() -> Text.literal("Locked skill tree " + skillCategory + " for player " + playerName)
+																				.formatted(Formatting.RED),
+																		true
+																);
+
+																return Command.SINGLE_SUCCESS;
+															})
+													)
+											)
+									)
+									.then(CommandManager.literal("unlock")
+											.then(CommandManager.argument("player", StringArgumentType.word())
+													.then(CommandManager.argument("skill", StringArgumentType.word())
+															.executes(context -> {
+																String playerName = StringArgumentType.getString(context, "player");
+																String skillCategory = StringArgumentType.getString(context, "skill");
+
+																// Execute the unlock command
+																String unlockCommand = String.format("/puffish_skills category unlock %s %s:%s",
+																		playerName,
+																		config.getSkillTreeNamespace(),
+																		skillCategory);
+
+																LOGGER.info("Manual unlock command: {}", unlockCommand);
+
+																Objects.requireNonNull(context.getSource().getServer()).getCommandManager().executeWithPrefix(
+																		context.getSource().getServer().getCommandSource().withSilent().withLevel(4),
+																		unlockCommand
+																);
+
+																context.getSource().sendFeedback(
+																		() -> Text.literal("Unlocked skill tree " + skillCategory + " for player " + playerName)
+																				.formatted(Formatting.GREEN),
+																		true
+																);
+
+																return Command.SINGLE_SUCCESS;
+															})
+													)
+											)
+									)
+									.then(CommandManager.literal("add_xp")
+											.then(CommandManager.argument("player", StringArgumentType.word())
+													.then(CommandManager.argument("skill", StringArgumentType.word())
+															.then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+																	.executes(context -> {
+																		String playerName = StringArgumentType.getString(context, "player");
+																		String skillCategory = StringArgumentType.getString(context, "skill");
+																		int xpAmount = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "amount");
+
+																		// Execute the XP add command
+																		String xpCommand = String.format("/puffish_skills experience add %s %s:%s %d",
+																				playerName,
+																				config.getSkillTreeNamespace(),
+																				skillCategory,
+																				xpAmount);
+
+																		LOGGER.info("Manual XP command: {}", xpCommand);
+
+																		Objects.requireNonNull(context.getSource().getServer()).getCommandManager().executeWithPrefix(
+																				context.getSource().getServer().getCommandSource().withSilent().withLevel(4),
+																				xpCommand
+																		);
+
+																		context.getSource().sendFeedback(
+																				() -> Text.literal("Added " + xpAmount + " XP to " + skillCategory + " for player " + playerName)
+																						.formatted(Formatting.AQUA),
+																				true
+																		);
+
+																		return Command.SINGLE_SUCCESS;
+																	})
+															)
+													)
+											)
+									)
+									.then(CommandManager.literal("info")
+											.executes(context -> {
+												context.getSource().sendFeedback(
+														() -> Text.literal("=== Respec Skill Prestige System ===").formatted(Formatting.GOLD, Formatting.BOLD),
+														false
+												);
+
+												context.getSource().sendFeedback(
+														() -> Text.literal("Available Commands:").formatted(Formatting.YELLOW),
+														false
+												);
+
+												context.getSource().sendFeedback(
+														() -> Text.literal("• /respecskill prestige lock <player> <skill> - Lock a skill tree").formatted(Formatting.WHITE),
+														false
+												);
+
+												context.getSource().sendFeedback(
+														() -> Text.literal("• /respecskill prestige unlock <player> <skill> - Unlock a skill tree").formatted(Formatting.WHITE),
+														false
+												);
+
+												context.getSource().sendFeedback(
+														() -> Text.literal("• /respecskill prestige add_xp <player> <skill> <amount> - Add XP to skill").formatted(Formatting.WHITE),
+														false
+												);
+
+												context.getSource().sendFeedback(
+														() -> Text.literal("Current namespace: " + config.getSkillTreeNamespace()).formatted(Formatting.GRAY),
+														false
+												);
+
+												// Show configured prestige mappings
+												Map<String, RespecConfig.PrestigeMapping> mappings = config.getPrestigeMappings();
+												if (!mappings.isEmpty()) {
+													context.getSource().sendFeedback(
+															() -> Text.literal("Configured Prestige Mappings:").formatted(Formatting.YELLOW),
+															false
+													);
+
+													for (Map.Entry<String, RespecConfig.PrestigeMapping> entry : mappings.entrySet()) {
+														RespecConfig.PrestigeMapping mapping = entry.getValue();
+														String status = mapping.isEnabled() ? "ENABLED" : "DISABLED";
+														Formatting statusColor = mapping.isEnabled() ? Formatting.GREEN : Formatting.RED;
+
+														context.getSource().sendFeedback(
+																() -> Text.literal("  • " + entry.getKey() + " → " + mapping.getToSkill() +
+																				" (Min: " + mapping.getMinPrestigeLevel() +
+																				", XP: " + mapping.getPrestigeXpMultiplier() + "x) [" + status + "]")
+																		.formatted(Formatting.WHITE)
+																		.append(Text.literal(" " + status).formatted(statusColor)),
+																false
+														);
+													}
+												} else {
+													context.getSource().sendFeedback(
+															() -> Text.literal("No prestige mappings configured.").formatted(Formatting.GRAY),
+															false
+													);
+												}
+
+												return Command.SINGLE_SUCCESS;
+											})
+									)
 							)
 			);
 		});
