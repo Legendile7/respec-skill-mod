@@ -25,6 +25,9 @@ public class RespecConfig {
     private float xpReductionFactor = 0.2f;
     private final Map<Block, String> skillAltarMap = new HashMap<>();
 
+    // New prestige system properties
+    private final Map<String, PrestigeMapping> prestigeMappings = new HashMap<>();
+
     // Track if we've attempted detection yet
     private boolean hasAttemptedDetection = false;
 
@@ -32,6 +35,31 @@ public class RespecConfig {
         // Default skill altar mappings
         skillAltarMap.put(Blocks.DIAMOND_BLOCK, "combat");
         skillAltarMap.put(Blocks.IRON_BLOCK, "mining");
+    }
+
+    /**
+     * Represents a prestige mapping for a skill category
+     */
+    public static class PrestigeMapping {
+        private final String fromSkill;
+        private final String toSkill;
+        private final boolean enabled;
+        private final int minPrestigeLevel;
+        private final float prestigeXpMultiplier;
+
+        public PrestigeMapping(String fromSkill, String toSkill, boolean enabled, int minPrestigeLevel, float prestigeXpMultiplier) {
+            this.fromSkill = fromSkill;
+            this.toSkill = toSkill;
+            this.enabled = enabled;
+            this.minPrestigeLevel = minPrestigeLevel;
+            this.prestigeXpMultiplier = prestigeXpMultiplier;
+        }
+
+        public String getFromSkill() { return fromSkill; }
+        public String getToSkill() { return toSkill; }
+        public boolean isEnabled() { return enabled; }
+        public int getMinPrestigeLevel() { return minPrestigeLevel; }
+        public float getPrestigeXpMultiplier() { return prestigeXpMultiplier; }
     }
 
     /**
@@ -50,7 +78,11 @@ public class RespecConfig {
     }
 
     public void load() {
+        // Check if migration is needed and perform it
+        boolean migrated = ConfigMigration.migrateConfigIfNeeded(CONFIG_PATH);
+
         if (!Files.exists(CONFIG_PATH)) {
+            LOGGER.info("Creating new config file with default values");
             save();
             return;
         }
@@ -58,7 +90,12 @@ public class RespecConfig {
         try {
             String content = Files.readString(CONFIG_PATH);
             parseTOML(content);
-            LOGGER.info("Config loaded successfully");
+
+            if (migrated) {
+                LOGGER.info("Config loaded successfully after migration");
+            } else {
+                LOGGER.info("Config loaded successfully");
+            }
         } catch (IOException | RuntimeException e) {
             LOGGER.error("Failed to load config: {}", e.getMessage());
         }
@@ -68,6 +105,7 @@ public class RespecConfig {
         // Simple TOML parser for our specific needs
         String[] lines = content.split("\n");
         boolean inSkillAltarMap = false;
+        boolean inPrestigeMappings = false;
 
         for (String line : lines) {
             line = line.trim();
@@ -80,10 +118,17 @@ public class RespecConfig {
             // Check for section headers
             if (line.equals("[skill_altar_map]")) {
                 inSkillAltarMap = true;
+                inPrestigeMappings = false;
                 skillAltarMap.clear(); // Clear defaults when loading from config
+                continue;
+            } else if (line.equals("[prestige_mappings]")) {
+                inSkillAltarMap = false;
+                inPrestigeMappings = true;
+                prestigeMappings.clear(); // Clear defaults when loading from config
                 continue;
             } else if (line.startsWith("[")) {
                 inSkillAltarMap = false;
+                inPrestigeMappings = false;
                 continue;
             }
 
@@ -106,6 +151,27 @@ public class RespecConfig {
                     } catch (Exception e) {
                         LOGGER.error("Error loading skill altar mapping for {}: {}", blockId, e.getMessage());
                     }
+                } else if (inPrestigeMappings) {
+                    // Parse prestige mapping
+                    String fromSkill = key.replace("\"", "");
+
+                    // Parse the complex value: "toSkill,enabled,minLevel,xpMultiplier"
+                    String[] prestigeValues = value.replace("\"", "").split(",");
+                    if (prestigeValues.length >= 4) {
+                        try {
+                            String toSkill = prestigeValues[0].trim();
+                            boolean enabled = Boolean.parseBoolean(prestigeValues[1].trim());
+                            int minLevel = Integer.parseInt(prestigeValues[2].trim());
+                            float xpMultiplier = Float.parseFloat(prestigeValues[3].trim());
+
+                            PrestigeMapping mapping = new PrestigeMapping(fromSkill, toSkill, enabled, minLevel, xpMultiplier);
+                            prestigeMappings.put(fromSkill, mapping);
+                            LOGGER.info("Loaded prestige mapping: {} -> {} (enabled: {}, min level: {}, xp mult: {})",
+                                    fromSkill, toSkill, enabled, minLevel, xpMultiplier);
+                        } catch (Exception e) {
+                            LOGGER.error("Error parsing prestige mapping for {}: {}", fromSkill, e.getMessage());
+                        }
+                    }
                 } else {
                     // Parse general config values
                     switch (key) {
@@ -127,6 +193,8 @@ public class RespecConfig {
         // Add header comment
         toml.append("# Respec Skill Mod Configuration\n");
         toml.append("# This file allows you to customize the behavior of the respec skill mod\n\n");
+        toml.append("# Config Version: 2\n");
+        toml.append("config_version = 2\n\n");
 
         // Basic settings
         toml.append("# Minimum level required to respec a skill category\n");
@@ -147,6 +215,32 @@ public class RespecConfig {
 
             Identifier blockId = Registries.BLOCK.getId(block);
             toml.append("\"").append(blockId).append("\" = \"").append(skillName).append("\"\n");
+        }
+
+        toml.append("\n");
+
+        // Prestige mappings
+        toml.append("# Prestige System Mappings\n");
+        toml.append("# Define skill tree transitions for prestige system\n");
+        toml.append("# Format: \"from_skill\" = \"to_skill,enabled,min_prestige_level,xp_reduction_factor\"\n");
+        toml.append("# Example: \"combat\" = \"advanced_combat,true,50,0.4\"\n");
+        toml.append("[prestige_mappings]\n");
+
+        if (prestigeMappings.isEmpty()) {
+            // Add example entries
+            toml.append("# \"combat\" = \"advanced_combat,true,50,0.4\"\n");
+            toml.append("# \"mining\" = \"master_mining,true,75,0.6\"\n");
+        } else {
+            for (Map.Entry<String, PrestigeMapping> entry : prestigeMappings.entrySet()) {
+                String fromSkill = entry.getKey();
+                PrestigeMapping mapping = entry.getValue();
+
+                toml.append("\"").append(fromSkill).append("\" = \"")
+                        .append(mapping.getToSkill()).append(",")
+                        .append(mapping.isEnabled()).append(",")
+                        .append(mapping.getMinPrestigeLevel()).append(",")
+                        .append(mapping.getPrestigeXpMultiplier()).append("\"\n");
+            }
         }
 
         try {
@@ -220,5 +314,13 @@ public class RespecConfig {
 
     public Map<Block, String> getSkillAltarMap() {
         return skillAltarMap;
+    }
+
+    public Map<String, PrestigeMapping> getPrestigeMappings() {
+        return prestigeMappings;
+    }
+
+    public Optional<PrestigeMapping> getPrestigeMapping(String fromSkill) {
+        return Optional.ofNullable(prestigeMappings.get(fromSkill));
     }
 }
