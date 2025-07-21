@@ -258,6 +258,22 @@ public class RespecMod implements ModInitializer {
 	}
 
 	private void executePrestigeRespec(ServerPlayerEntity player, World world, Hand hand, BlockPos pos, String skillCategory, RespecConfig.PrestigeMapping prestige, Category category, int points) {
+		// Add a pre-check to see if the player has already prestiged from this tree.
+		Identifier newCategoryId = Identifier.of(config.getSkillTreeNamespace(), prestige.getToSkill());
+		Optional<Category> newCategoryOpt = SkillsAPI.getCategory(newCategoryId);
+
+		if (newCategoryOpt.isPresent()) {
+			Category newCategory = newCategoryOpt.get();
+			// A category that has been locked via the prestige process will not be "unlocked".
+			// If the old tree is locked AND the new one is unlocked, they have already ascended.
+			if (!category.isUnlocked(player) && newCategory.isUnlocked(player)) {
+				player.sendMessage(Text.literal("You have already ascended from " + skillCategory + " to " + prestige.getToSkill() + ".")
+						.formatted(Formatting.RED), false);
+				player.sendMessage(Text.literal("Your path now lies forward!").formatted(Formatting.GOLD, Formatting.ITALIC), false);
+				return; // Stop further execution
+			}
+		}
+
 		// Check if player meets prestige requirements
 		if (points < prestige.getMinPrestigeLevel()) {
 			player.sendMessage(Text.literal("You need to be level " + prestige.getMinPrestigeLevel() +
@@ -327,11 +343,10 @@ public class RespecMod implements ModInitializer {
 			}
 
 			// Get the new experience level for feedback
-			Identifier newCategoryId = Identifier.of(config.getSkillTreeNamespace(), prestige.getToSkill());
-			Optional<Category> newCategoryOpt = SkillsAPI.getCategory(newCategoryId);
+			Optional<Category> finalNewCategoryOpt = SkillsAPI.getCategory(newCategoryId);
 			int newLevel = 0;
-			if (newCategoryOpt.isPresent()) {
-				Optional<Experience> newExperienceOpt = newCategoryOpt.get().getExperience();
+			if (finalNewCategoryOpt.isPresent()) {
+				Optional<Experience> newExperienceOpt = finalNewCategoryOpt.get().getExperience();
 				if (newExperienceOpt.isPresent()) {
 					newLevel = newExperienceOpt.get().getLevel(player);
 				}
