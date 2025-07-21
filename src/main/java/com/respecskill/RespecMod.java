@@ -274,6 +274,10 @@ public class RespecMod implements ModInitializer {
 			int currentXp = experience.getTotal(player);
 			LOGGER.info("Player has {} XP in {} category, prestiging to {}", currentXp, skillCategory, prestige.getToSkill());
 
+			// Erase the original category's data to prevent XP duplication.
+			category.erase(player);
+			LOGGER.info("Erased player data for original category: {}", skillCategory);
+
 			// Lock the current skill tree first
 			String lockCommand = String.format("/puffish_skills category lock %s %s:%s",
 					player.getName().getString(),
