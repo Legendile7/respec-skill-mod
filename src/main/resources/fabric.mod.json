@@ -11,7 +11,7 @@
 		"homepage": "",
 		"sources": ""
 	},
-	"license": "CC0-1.0",
+	"license": "MIT",
 	"icon": "assets/respec-skill/icon.png",
 	"environment": "*",
 	"entrypoints": {
@@ -20,13 +20,10 @@
 		]
 	},
 	"depends": {
-		"fabricloader": ">=0.16.14",
-		"minecraft": "~1.21.5",
-		"java": ">=21",
+		"fabricloader": ">=0.19.2",
+		"minecraft": "~26.1",
+		"java": ">=25",
 		"fabric-api": "*",
-		"puffish_skills": ">=0.16.3"
-	},
-	"suggests": {
-		"another-mod": "*"
+		"puffish_skills": "*"
 	}
 }

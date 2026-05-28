@@ -1,224 +1,126 @@
 package com.respecskill;
 
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
-import net.puffish.skillsmod.api.Category;
-import net.puffish.skillsmod.api.SkillsAPI;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Properties;
+import java.util.TreeSet;
 
 public class RespecConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(RespecMod.MOD_ID);
-    private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("respec-skill.toml");
+    private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("respec-skill.properties");
 
-    // Using fallback default, will be detected when needed
-    private String skillTreeNamespace = "puffish_skills";
     private int minLevelToRespec = 20;
     private float xpReductionFactor = 0.2f;
-    private final Map<Block, String> skillAltarMap = new HashMap<>();
-
-    // Track if we've attempted detection yet
-    private boolean hasAttemptedDetection = false;
+    private Block altarTopBlock = Blocks.LODESTONE;
+    private final Map<Block, Identifier> altars = new LinkedHashMap<>();
 
     public RespecConfig() {
-        // Default skill altar mappings
-        skillAltarMap.put(Blocks.DIAMOND_BLOCK, "combat");
-        skillAltarMap.put(Blocks.IRON_BLOCK, "mining");
-    }
-
-    /**
-     * Auto-detects and sets the namespace, logging the result.
-     * Only attempts detection if the mod is fully loaded.
-     */
-    public void detectAndSetNamespace() {
-        try {
-            this.skillTreeNamespace = detectSkillTreeNamespace();
-            this.hasAttemptedDetection = true;
-            LOGGER.info("Using skill tree namespace: {}", this.skillTreeNamespace);
-        } catch (Exception e) {
-            LOGGER.warn("Failed to detect skill tree namespace: {}. Will retry later.", e.getMessage());
-            this.hasAttemptedDetection = false;
-        }
+        altars.put(Blocks.DIAMOND_BLOCK, Identifier.fromNamespaceAndPath("puffish_skills", "combat"));
+        altars.put(Blocks.IRON_BLOCK, Identifier.fromNamespaceAndPath("puffish_skills", "mining"));
     }
 
     public void load() {
         if (!Files.exists(CONFIG_PATH)) {
-            save();
+            writeDefaults();
             return;
         }
-
         try {
-            String content = Files.readString(CONFIG_PATH);
-            parseTOML(content);
-            LOGGER.info("Config loaded successfully");
-        } catch (IOException | RuntimeException e) {
-            LOGGER.error("Failed to load config: {}", e.getMessage());
-        }
-    }
+            Properties props = new Properties();
+            props.load(new StringReader(Files.readString(CONFIG_PATH)));
 
-    private void parseTOML(String content) {
-        // Simple TOML parser for our specific needs
-        String[] lines = content.split("\n");
-        boolean inSkillAltarMap = false;
-
-        for (String line : lines) {
-            line = line.trim();
-
-            // Skip comments and empty lines
-            if (line.startsWith("#") || line.isEmpty()) {
-                continue;
+            if (props.containsKey("min_level_to_respec"))
+                minLevelToRespec = Integer.parseInt(props.getProperty("min_level_to_respec").trim());
+            if (props.containsKey("xp_reduction_factor"))
+                xpReductionFactor = Float.parseFloat(props.getProperty("xp_reduction_factor").trim());
+            if (props.containsKey("altar_top_block")) {
+                Block top = lookupBlock(props.getProperty("altar_top_block").trim());
+                if (top != null) altarTopBlock = top;
             }
 
-            // Check for section headers
-            if (line.equals("[skill_altar_map]")) {
-                inSkillAltarMap = true;
-                skillAltarMap.clear(); // Clear defaults when loading from config
-                continue;
-            } else if (line.startsWith("[")) {
-                inSkillAltarMap = false;
-                continue;
+            Map<Block, Identifier> parsed = new LinkedHashMap<>();
+            TreeSet<String> altarKeys = new TreeSet<>();
+            for (String k : props.stringPropertyNames()) {
+                if (k.startsWith("altar.")) altarKeys.add(k);
             }
-
-            // Parse key-value pairs
-            if (line.contains("=")) {
-                String[] parts = line.split("=", 2);
-                String key = parts[0].trim();
-                String value = parts[1].trim();
-
-                if (inSkillAltarMap) {
-                    // Parse skill altar mapping
-                    String blockId = key.replace("\"", "");
-                    String skillName = value.replace("\"", "");
-
-                    try {
-                        Identifier blockIdentifier = Identifier.of(blockId);
-                        Block block = Registries.BLOCK.get(blockIdentifier);
-                        skillAltarMap.put(block, skillName);
-                        LOGGER.info("Loaded skill altar mapping: {} -> {}", blockId, skillName);
-                    } catch (Exception e) {
-                        LOGGER.error("Error loading skill altar mapping for {}: {}", blockId, e.getMessage());
-                    }
-                } else {
-                    // Parse general config values
-                    switch (key) {
-                        case "min_level_to_respec":
-                            minLevelToRespec = Integer.parseInt(value);
-                            break;
-                        case "xp_reduction_factor":
-                            xpReductionFactor = Float.parseFloat(value);
-                            break;
-                    }
+            for (String key : altarKeys) {
+                String value = props.getProperty(key).trim();
+                String[] parts = value.split(",", 2);
+                if (parts.length != 2) {
+                    LOGGER.warn("Skipping malformed altar entry {} = {} (expected 'block,category')", key, value);
+                    continue;
                 }
+                Block block = lookupBlock(parts[0].trim());
+                Identifier category = Identifier.tryParse(parts[1].trim());
+                if (block == null || category == null) {
+                    LOGGER.warn("Skipping invalid altar entry {} = {}", key, value);
+                    continue;
+                }
+                parsed.put(block, category);
             }
+            if (!parsed.isEmpty()) {
+                altars.clear();
+                altars.putAll(parsed);
+            }
+
+            LOGGER.info("Config loaded ({} altars)", altars.size());
+        } catch (IOException | RuntimeException e) {
+            LOGGER.error("Failed to load config, keeping defaults: {}", e.getMessage());
         }
     }
 
-    public void save() {
-        StringBuilder toml = new StringBuilder();
+    private void writeDefaults() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# Respec Skill Mod Configuration\n");
+        sb.append("# All values are reloadable in-game with /respecskill reload\n\n");
 
-        // Add header comment
-        toml.append("# Respec Skill Mod Configuration\n");
-        toml.append("# This file allows you to customize the behavior of the respec skill mod\n\n");
+        sb.append("# Minimum total skill points a player must have in a category to be allowed to respec it.\n");
+        sb.append("min_level_to_respec = ").append(minLevelToRespec).append("\n\n");
 
-        // Basic settings
-        toml.append("# Minimum level required to respec a skill category\n");
-        toml.append("min_level_to_respec = ").append(minLevelToRespec).append("\n\n");
+        sb.append("# Fraction of category XP returned after a respec (0.0 = lose everything, 1.0 = lose nothing).\n");
+        sb.append("xp_reduction_factor = ").append(xpReductionFactor).append("\n\n");
 
-        toml.append("# Factor by which XP is reduced after respec (0.2 = 20% of original XP retained)\n");
-        toml.append("xp_reduction_factor = ").append(xpReductionFactor).append("\n\n");
+        sb.append("# The block placed ON TOP of the altar base. Right-clicking this with a Respec Scroll triggers a reset.\n");
+        sb.append("altar_top_block = ").append(BuiltInRegistries.BLOCK.getKey(altarTopBlock)).append("\n\n");
 
-        // Skill altar mappings
-        toml.append("# Skill Altar Mappings\n");
-        toml.append("# Define which blocks (under a lodestone) correspond to which skill categories\n");
-        toml.append("# Format: \"minecraft:block_name\" = \"skill_category_name\"\n");
-        toml.append("[skill_altar_map]\n");
-
-        for (Map.Entry<Block, String> entry : skillAltarMap.entrySet()) {
-            Block block = entry.getKey();
-            String skillName = entry.getValue();
-
-            Identifier blockId = Registries.BLOCK.getId(block);
-            toml.append("\"").append(blockId).append("\" = \"").append(skillName).append("\"\n");
+        sb.append("# Altar mappings.\n");
+        sb.append("# Format:  altar.<n> = <base_block_id>,<skill_category_id>\n");
+        sb.append("# The base block is the one directly UNDER the altar top block.\n");
+        sb.append("# The skill category is the full Puffish identifier (namespace:path).\n");
+        int i = 1;
+        for (Map.Entry<Block, Identifier> e : altars.entrySet()) {
+            sb.append("altar.").append(i++).append(" = ")
+                    .append(BuiltInRegistries.BLOCK.getKey(e.getKey())).append(",")
+                    .append(e.getValue()).append("\n");
         }
 
         try {
             Files.createDirectories(CONFIG_PATH.getParent());
-            Files.writeString(CONFIG_PATH, toml.toString());
-            LOGGER.info("Config saved to {}", CONFIG_PATH);
+            Files.writeString(CONFIG_PATH, sb.toString());
+            LOGGER.info("Wrote default config to {}", CONFIG_PATH);
         } catch (IOException e) {
-            LOGGER.error("Failed to save config: {}", e.getMessage());
+            LOGGER.error("Failed to write default config: {}", e.getMessage());
         }
     }
 
-    /**
-     * Attempts to auto-detect the skill tree namespace by querying all available categories
-     * from the Puffish Skills API.
-     *
-     * @return The detected namespace, or "puffish_skills" as fallback if none found
-     */
-    private String detectSkillTreeNamespace() {
-        try {
-            // Get all registered categories using streamCategories()
-            Collection<Category> categories = SkillsAPI.streamCategories().toList();
-
-            // If there are no categories, use a sensible default
-            if (categories.isEmpty()) {
-                LOGGER.warn("No skill categories found, using fallback namespace: puffish_skills");
-                return "puffish_skills"; // Common default
-            }
-
-            // Create a map to count namespaces
-            Map<String, Integer> namespaceCount = new HashMap<>();
-
-            // Count occurrences of each namespace
-            for (Category category : categories) {
-                Identifier id = category.getId();
-                String namespace = id.getNamespace();
-
-                namespaceCount.put(namespace, namespaceCount.getOrDefault(namespace, 0) + 1);
-            }
-
-            // Find the most common namespace
-            String detectedNamespace = namespaceCount.entrySet().stream()
-                    .max(Map.Entry.comparingByValue())
-                    .map(Map.Entry::getKey)
-                    .orElse("puffish_skills"); // Fallback
-
-            LOGGER.info("Detected skill tree namespace: {} (from {} categories)",
-                    detectedNamespace, namespaceCount.getOrDefault(detectedNamespace, 0));
-
-            return detectedNamespace;
-        } catch (Exception e) {
-            LOGGER.error("Error detecting namespace: {}", e.getMessage());
-            return "puffish_skills"; // Fallback
-        }
+    private static Block lookupBlock(String id) {
+        Identifier blockId = Identifier.tryParse(id);
+        return blockId == null ? null : BuiltInRegistries.BLOCK.getValue(blockId);
     }
 
-    public String getSkillTreeNamespace() {
-        // Try to detect the namespace if we haven't already
-        if (!hasAttemptedDetection) {
-            detectAndSetNamespace();
-        }
-        return skillTreeNamespace;
-    }
-
-    public int getMinLevelToRespec() {
-        return minLevelToRespec;
-    }
-
-    public float getXpReductionFactor() {
-        return xpReductionFactor;
-    }
-
-    public Map<Block, String> getSkillAltarMap() {
-        return skillAltarMap;
-    }
+    public int getMinLevelToRespec() { return minLevelToRespec; }
+    public float getXpReductionFactor() { return xpReductionFactor; }
+    public Block getAltarTopBlock() { return altarTopBlock; }
+    public Map<Block, Identifier> getAltars() { return altars; }
 }
