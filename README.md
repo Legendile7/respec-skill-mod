@@ -1,86 +1,119 @@
 # Respec Skill Mod
 Reset and reallocate your skills used in [Pufferfish's Skills](https://modrinth.com/mod/skills) easily!
 
-**⚠️ THIS MOD REQUIRES CONFIGURATION TO WORK!**
+Server-side mod. Players type `/respec` to open a clickable menu of every Puffish skill category on the server; each costs a configurable item. Categories are auto-discovered, so no setup is needed to support new skill trees.
 
-# Features
+# Commands
 
-**Skill Respec System:** Reset individual skill categories and get back XP to reallocate
-
-**Prestige System:** Transition from one skill tree to another at high levels
-
-**Configurable:** Set minimum levels and XP retention rates
+| Command | Permission | Description |
+| --- | --- | --- |
+| `/respec` | All players | Opens the chat menu listing every Puffish category with a clickable `[Reset]` button. |
+| `/respec <namespace:category>` | All players | Respecs the given category directly. Used by the menu's `[Reset]` button. |
+| `/respec prestige` | All players | Lists configured prestige paths. Ineligible paths show greyed out. |
+| `/respec prestige <from_category>` | All players | Ascends from the given category into its configured target. |
+| `/respec reload` | Level 3 (op) | Reloads `config/respec-skill.properties` from disk. |
 
 # How It Works
-### 1. Craft a **Respec Scroll**
-Use the following recipe:
 
-![Respec Scroll Crafting Recipe](https://cdn.modrinth.com/data/cached_images/68beb43e27e38c317879286b21e66b20498de157.png)
+### 1. Run `/respec`
+Players see a chat menu listing every Puffish skill category loaded on the server, with the cost shown next to a clickable `[Reset]` button.
 
-### 2. Build a **Skill Altar**
-Create an altar by placing a configured skill block with a lodestone on top.
+### 2. Click `[Reset]` (or run `/respec <namespace:category>`)
+The mod checks:
+- Player has enough total skill points in that category (`min_level_to_respec`)
+- Player is past the cooldown (if configured)
+- Player has enough of the cost item in their inventory
 
-Here’s an example setup for the [Default Skill Tree](https://modrinth.com/datapack/default-skill-trees):
-![Default Skill Tree Skill Altars](https://cdn.modrinth.com/data/cached_images/5ed253ed7fb86a670ca34a380505cb3c123ed14f.png)
-
-### 3. Reset your skills!
-Simply right-click the lodestone with your Respec Scroll to reset your skill points.
-
-### 4. Prestige System
-When you reach high levels in a skill category, you can transition to advanced skill trees through the prestige system. Configure prestige mappings to define which skills can transition to which advanced trees, along with requirements and XP transfer rates.
+If all pass, the item is consumed, the category is erased, and a fraction of the previous XP is returned (`xp_reduction_factor`).
 
 # Configuration
 
-### Basic Settings
-- `min_level_to_respec`: Minimum level required to use respec (default: 20)
-- `xp_reduction_factor`: Percentage of XP retained after respec (default: 0.2 = 20%)
+Edit `config/respec-skill.properties`. Reload in-game with `/respec reload` (requires permission level 3).
 
-### Skill Altar Mappings
-Define which blocks under a lodestone correspond to which skill categories. This allows you to create themed altars for different skills.
+```properties
+# Minimum total skill points a player must have in a category before they can respec it.
+min_level_to_respec = 20
 
-### Prestige System
-(Optional) Configure skill tree transitions for advanced progression:
-- `from_skill` → `to_skill`: Define which skill can transition to which advanced tree
-- `enabled`: Whether this prestige path is active
-- `min_prestige_level`: Minimum level required for prestige (overrides `min_level_to_respec`)
-- `xp_transfer_rate`: How much XP transfers to the new skill tree (overrides `xp_reduction_factor`)
+# Fraction of category XP returned after respec (0.0 = lose all, 1.0 = lose none).
+xp_reduction_factor = 0.2
+
+# Cooldown in seconds between respecs (0 = no cooldown). Per player, in-memory only; resets on server restart.
+cooldown_seconds = 0
+
+# Default cost applied to every category that doesn't have an override below.
+# Format:  <item_id>, <count>
+default_cost = minecraft:emerald, 16
+
+# Optional: per-category cost overrides. Categories without an override use default_cost.
+# cost.puffish_skills:combat = minecraft:diamond, 4
+# cost.puffish_skills:mining = minecraft:emerald, 32
+```
+
+You do **not** need to list each category. Every Puffish category loaded on the server is auto-discovered and appears in `/respec` automatically.
+
+## Prestige (optional)
+
+A one-way irreversible ascension from one skill category into another. Configure paths in the same file:
+
+```properties
+# Format:  prestige.<n> = <from_category>, <to_category>, <min_points_in_from>, <xp_carryover_factor>, <cost_item>, <cost_count>
+prestige.1 = puffish_skills:combat, puffish_skills:advanced_combat, 50, 0.4, minecraft:netherite_ingot, 1
+prestige.2 = puffish_skills:mining, puffish_skills:master_mining,   75, 0.6, minecraft:netherite_ingot, 2
+```
+
+On a successful prestige, the source category is erased, the target category gains `currentXp × xp_carryover_factor`, and the cost is consumed. If any prestige paths are configured, `/respec` shows a clickable link to the prestige menu at the bottom of its output. See the **Commands** section above for the command syntax.
 
 # For Servers/Modpacks
-The mod runs server-side. To see the Respec Scroll in the creative inventory or through mods like [REI](https://modrinth.com/mod/rei), it must also be installed client-side.
+Pure server-side; clients do not need the mod. Feel free to include in modpacks. Credit appreciated but not required.
 
-Feel free to include this mod in your modpacks! Credit is appreciated but not mandatory.
+---
 
-# Default Config
+# 1.x Legacy
+
+The 1.x line used a different mechanic: a craftable **Respec Scroll** right-clicked onto a **Skill Altar** (a lodestone placed on a configured base block). **2.0 removed all of that** in favor of the `/respec` command described above.
+
+If you are on 1.x and need that documentation, see below. Upgrading to 2.x will require regenerating the config (`respec-skill.toml` → `respec-skill.properties`).
+
 <details>
-<summary>Default Config</summary>
+<summary>1.x docs</summary>
+
+**Features**
+- **Skill Respec System:** Reset individual skill categories and get back XP to reallocate.
+- **Prestige System:** Transition from one skill tree to another at high levels.
+- **Configurable:** Set minimum levels and XP retention rates.
+
+**How it worked**
+
+1. Craft a **Respec Scroll** with this recipe:
+
+   ![Respec Scroll Crafting Recipe](https://cdn.modrinth.com/data/cached_images/68beb43e27e38c317879286b21e66b20498de157.png)
+
+2. Build a **Skill Altar** by placing a configured skill block with a lodestone on top. Example setup for the [Default Skill Tree](https://modrinth.com/datapack/default-skill-trees):
+
+   ![Default Skill Tree Skill Altars](https://cdn.modrinth.com/data/cached_images/5ed253ed7fb86a670ca34a380505cb3c123ed14f.png)
+
+3. Right-click the lodestone with the scroll to reset that category's points.
+
+4. **Prestige:** at high levels, transition into advanced trees via configured `from → to` mappings.
+
+**1.x config (TOML)**
 
 ```toml
 # Respec Skill Mod Configuration
-# This file allows you to customize the behavior of the respec skill mod
-# Config Version: 2
 config_version = 2
 
-# Minimum level required to respec a skill category
 min_level_to_respec = 20
-
-# Factor by which XP is reduced after respec (0.2 = 20% of original XP retained)
 xp_reduction_factor = 0.2
 
-# Skill Altar Mappings
-# Define which blocks (under a lodestone) correspond to which skill categories
-# Format: "minecraft:block_name" = "skill_category_name"
 [skill_altar_map]
 "minecraft:diamond_block" = "combat"
 "minecraft:iron_block" = "mining"
 
-# Prestige System Mappings
-# Define skill tree transitions for prestige system
-# Format: "from_skill" = "to_skill,enabled,min_prestige_level,xp_reduction_factor"
-# Example: "combat" = "advanced_combat,true,50,0.4"
 [prestige_mappings]
 # "combat" = "advanced_combat,true,50,0.4"
 # "mining" = "master_mining,true,75,0.6"
 ```
 
-</details>
+**Client-side note (1.x only):** to see the Respec Scroll in the creative inventory or in [REI](https://modrinth.com/mod/rei), the mod also had to be installed client-side. 2.x is fully server-side.
 
+</details>

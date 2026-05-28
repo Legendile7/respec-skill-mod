@@ -3,7 +3,7 @@
 	"id": "respec-skill",
 	"version": "${version}",
 	"name": "Respec Skill",
-	"description": "A server-side mod to allow players to respec skills at an altar.",
+	"description": "Server-side mod that lets players respec Puffish Skills categories via the /respec command.",
 	"authors": [
 		"Legendile7"
 	],
