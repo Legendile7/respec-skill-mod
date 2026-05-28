@@ -72,7 +72,7 @@ Pure server-side; clients do not need the mod. Feel free to include in modpacks.
 
 # 1.x Legacy
 
-The 1.x line used a different mechanic: a craftable **Respec Scroll** right-clicked onto a **Skill Altar** (a lodestone placed on a configured base block). **2.0 removed all of that** in favor of the `/respec` command described above.
+The 1.x versions used a different mechanic: a craftable **Respec Scroll** right-clicked onto a **Skill Altar** (a lodestone placed on a configured base block). **2.0 removed all of that** in favor of the `/respec` command described above.
 
 If you are on 1.x and need that documentation, see below. Upgrading to 2.x will require regenerating the config (`respec-skill.toml` → `respec-skill.properties`).
 
