@@ -3,6 +3,8 @@ Reset and reallocate your skills used in [Pufferfish's Skills](https://modrinth.
 
 Server-side mod. Players type `/respec` to open a clickable menu of every Puffish skill category on the server; each costs a configurable item. Categories are auto-discovered, so no setup is needed to support new skill trees.
 
+![Respec Menu](https://cdn.modrinth.com/data/cached_images/f18c5f04fdc806a9adc8acafa8ae1588ed4f4f83.png)
+
 # Commands
 
 | Command | Permission | Description |
